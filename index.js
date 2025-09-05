@@ -316,15 +316,18 @@ async function getGoogleCalendarAuth() {
 
 async function createGoogleCalendarEvent(eventData, quoteiqDocId) {
   try {
+    console.log('Starting Google Calendar event creation...');
     const calendar = await getGoogleCalendarAuth();
     if (!calendar) {
-      console.log('Google Calendar not configured - would create event:', eventData.summary);
+      console.log('Google Calendar authentication failed - skipping event creation');
       return;
     }
     
     const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
+    console.log('Using calendar ID:', calendarId);
     
     console.log('Creating Google Calendar event:', eventData.summary);
+    console.log('Event data:', JSON.stringify(eventData, null, 2));
     
     const response = await calendar.events.insert({
       calendarId: calendarId,
@@ -334,11 +337,21 @@ async function createGoogleCalendarEvent(eventData, quoteiqDocId) {
     // Store the mapping between QuoteIQ doc_id and Google Calendar event_id
     eventMappings.set(quoteiqDocId, response.data.id);
     
-    console.log('Google Calendar event created:', response.data.id);
+    console.log('SUCCESS: Google Calendar event created with ID:', response.data.id);
+    console.log('Event URL:', response.data.htmlLink);
     return response.data;
     
   } catch (error) {
-    console.error('Error creating Google Calendar event:', error);
+    console.error('DETAILED ERROR creating Google Calendar event:');
+    console.error('Error message:', error.message);
+    console.error('Error code:', error.code);
+    console.error('Error status:', error.status);
+    console.error('Full error:', error);
+    
+    if (error.response) {
+      console.error('Response data:', error.response.data);
+      console.error('Response status:', error.response.status);
+    }
   }
 }
 
