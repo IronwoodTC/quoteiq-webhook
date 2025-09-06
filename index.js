@@ -335,10 +335,20 @@ async function createGoogleCalendarEvent(eventData, quoteiqDocId) {
     console.log('Creating Google Calendar event:', eventData.summary);
     console.log('Event data:', JSON.stringify(eventData, null, 2));
     
-    const response = await calendar.events.insert({
+    console.log('About to call calendar.events.insert...');
+    
+    // Set a timeout for the API call
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('API call timeout after 10 seconds')), 10000)
+    );
+    
+    const insertPromise = calendar.events.insert({
       calendarId: calendarId,
       resource: eventData
     });
+    
+    console.log('Waiting for API response...');
+    const response = await Promise.race([insertPromise, timeoutPromise]);
     
     // Store the mapping between QuoteIQ doc_id and Google Calendar event_id
     eventMappings.set(quoteiqDocId, response.data.id);
@@ -352,12 +362,19 @@ async function createGoogleCalendarEvent(eventData, quoteiqDocId) {
     console.error('Error message:', error.message);
     console.error('Error code:', error.code);
     console.error('Error status:', error.status);
-    console.error('Full error:', error);
+    console.error('Error name:', error.name);
     
     if (error.response) {
       console.error('Response data:', error.response.data);
       console.error('Response status:', error.response.status);
+      console.error('Response headers:', error.response.headers);
     }
+    
+    if (error.message === 'API call timeout after 10 seconds') {
+      console.error('The Google Calendar API call timed out - this suggests a network or permissions issue');
+    }
+    
+    console.error('Full error object:', JSON.stringify(error, null, 2));
   }
 }
 
