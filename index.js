@@ -6,9 +6,6 @@ const app = express();
 // Middleware to parse JSON
 app.use(express.json());
 
-// Store event mappings (in a production environment, use a database)
-const eventMappings = new Map(); // Maps QuoteIQ doc_id to Google Calendar event_id
-
 // Google Calendar Integration Functions
 async function getGoogleCalendarAuth() {
   try {
@@ -40,7 +37,6 @@ async function createGoogleCalendarEvent(eventData, quoteiqDocId) {
       resource: eventData
     });
     
-    eventMappings.set(quoteiqDocId, response.data.id);
     console.log('SUCCESS: Google Calendar event created with ID:', response.data.id);
     return response.data;
   } catch (error) {
@@ -59,27 +55,32 @@ async function updateGoogleCalendarEvent(eventData, quoteiqDocId) {
     }
     
     const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
-    const googleEventId = eventMappings.get(quoteiqDocId);
-    
-    if (!googleEventId) {
+
+    // First, try to find the existing event by searching the description for the doc_id
+    const searchResponse = await calendar.events.list({
+        calendarId: calendarId,
+        q: quoteiqDocId, // Search for the unique document ID
+    });
+    const existingEvents = searchResponse.data.items;
+
+    if (existingEvents.length > 0) {
+      const googleEventId = existingEvents[0].id;
+      console.log(`Found existing event with ID: ${googleEventId}. Updating it.`);
+      const response = await calendar.events.update({
+        calendarId: calendarId,
+        eventId: googleEventId,
+        resource: eventData
+      });
+      console.log('Google Calendar event updated:', response.data.id);
+      return response.data;
+    } else {
       console.log('No existing Google Calendar event found. Creating a new one.');
       return await createGoogleCalendarEvent(eventData, quoteiqDocId);
     }
-    
-    console.log('Updating Google Calendar event:', googleEventId);
-    const response = await calendar.events.update({
-      calendarId: calendarId,
-      eventId: googleEventId,
-      resource: eventData
-    });
-    
-    console.log('Google Calendar event updated:', response.data.id);
-    return response.data;
   } catch (error) {
     console.error('Error updating Google Calendar event:', error.message);
     if (error.code === 404) {
       console.log('Event not found. Creating a new one.');
-      eventMappings.delete(quoteiqDocId);
       return await createGoogleCalendarEvent(eventData, quoteiqDocId);
     }
     throw error;
@@ -95,24 +96,25 @@ async function deleteGoogleCalendarEvent(quoteiqDocId) {
     }
     
     const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
-    const googleEventId = eventMappings.get(quoteiqDocId);
-    
-    if (!googleEventId) {
-      console.log('No Google Calendar event found to delete for doc_id:', quoteiqDocId);
-      return;
-    }
-    
-    console.log('Deleting Google Calendar event:', googleEventId);
-    await calendar.events.delete({
-      calendarId: calendarId,
-      eventId: googleEventId
+    const searchResponse = await calendar.events.list({
+        calendarId: calendarId,
+        q: quoteiqDocId,
     });
+    const existingEvents = searchResponse.data.items;
     
-    eventMappings.delete(quoteiqDocId);
-    console.log('Google Calendar event deleted successfully.');
+    if (existingEvents.length > 0) {
+      const googleEventId = existingEvents[0].id;
+      console.log(`Deleting Google Calendar event with ID: ${googleEventId}`);
+      await calendar.events.delete({
+        calendarId: calendarId,
+        eventId: googleEventId
+      });
+      console.log('Google Calendar event deleted successfully.');
+    } else {
+      console.log('No Google Calendar event found to delete for doc_id:', quoteiqDocId);
+    }
   } catch (error) {
     console.error('Error deleting Google Calendar event:', error.message);
-    eventMappings.delete(quoteiqDocId);
     throw error;
   }
 }
