@@ -1,4 +1,4 @@
-// QuoteIQ Webhook Handler - Complete Version with Simplified Data Forwarding
+// QuoteIQ Webhook Handler - Complete Version with Permanent Payload Logging
 const express = require('express');
 const { google } = require('googleapis');
 const fetch = require('node-fetch');
@@ -110,7 +110,7 @@ async function deleteGoogleCalendarEvent(quoteiqDocId) {
   }
 }
 
-// NEW FUNCTION: Sends data using URL-encoded form
+// Sends data to Google Sheets using URL-encoded form
 async function sendToGoogleSheets(payload) {
     const url = process.env.GOOGLE_SHEETS_WEBHOOK_URL;
     if (!url) {
@@ -141,24 +141,20 @@ async function sendToGoogleSheets(payload) {
     }
 }
 
-// Event handlers (now using the new sendToGoogleSheets function)
+// Event handlers
 async function handleEstimateCreated(payload) {
-  console.log('Estimate created. Forwarding data to Google Sheets.');
   await sendToGoogleSheets({ type: 'estimate.created', payload: payload });
 }
 
 async function handleEstimateUpdated(payload) {
-  console.log('Estimate updated. Forwarding data to Google Sheets.');
   await sendToGoogleSheets({ type: 'estimate.updated', payload: payload });
 }
 
 async function handleEstimateDeleted(payload) {
-  console.log('Estimate deleted. Forwarding data to Google Sheets.');
   await sendToGoogleSheets({ type: 'estimate.deleted', payload: payload });
 }
 
 async function handleScheduleCreated(payload) {
-  console.log('Schedule created:', { customer: payload.customer_name });
   const calendarEvent = {
     summary: `Appointment - ${payload.customer_name || 'QuoteIQ Customer'}`,
     description: `
@@ -182,7 +178,6 @@ async function handleScheduleCreated(payload) {
 }
 
 async function handleScheduleUpdated(payload) {
-  console.log('Schedule updated:', { customer: payload.customer_name });
   const updatedCalendarEvent = {
     summary: `Appointment - ${payload.customer_name || 'QuoteIQ Customer'}`,
     description: `
@@ -206,7 +201,6 @@ async function handleScheduleUpdated(payload) {
 }
 
 async function handleScheduleDeleted(payload) {
-  console.log('Schedule deleted:', { doc_id: payload.doc_id });
   await deleteGoogleCalendarEvent(payload.doc_id);
 }
 
@@ -214,6 +208,9 @@ async function handleScheduleDeleted(payload) {
 app.post('/webhook/quoteiq', async (req, res) => {
   try {
     const eventData = req.body;
+    // Permanently logs the full webhook payload for every event
+    console.log('Full Webhook Payload:', JSON.stringify(eventData, null, 2)); 
+    
     const eventType = eventData.type;
     const payload = eventData.payload;
     console.log(`Processing event: ${eventType}`);
