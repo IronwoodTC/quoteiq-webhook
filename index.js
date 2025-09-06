@@ -138,9 +138,7 @@ async function handleScheduleCreated(payload) {
       dateTime: new Date(payload.schedule_ends_at).toISOString(),
     },
     location: payload.customer_address || '', 
-    attendees: payload.customer_email ? [{ email: payload.customer_email }] : [],
   };
-
   await createGoogleCalendarEvent(calendarEvent, payload.doc_id);
 }
 
@@ -165,9 +163,7 @@ async function handleScheduleUpdated(payload) {
       dateTime: new Date(payload.schedule_ends_at).toISOString(),
     },
     location: payload.customer_address || '', 
-    attendees: payload.customer_email ? [{ email: payload.customer_email }] : [],
   };
-
   await updateGoogleCalendarEvent(updatedCalendarEvent, payload.doc_id);
 }
 
