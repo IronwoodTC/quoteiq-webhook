@@ -56,10 +56,9 @@ async function updateGoogleCalendarEvent(eventData, quoteiqDocId) {
     
     const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
 
-    // First, try to find the existing event by searching the description for the doc_id
     const searchResponse = await calendar.events.list({
         calendarId: calendarId,
-        q: quoteiqDocId, // Search for the unique document ID
+        q: quoteiqDocId,
     });
     const existingEvents = searchResponse.data.items;
 
@@ -120,6 +119,31 @@ async function deleteGoogleCalendarEvent(quoteiqDocId) {
 }
 
 // Event handlers
+async function handleEstimateCreated(payload) {
+  console.log('Estimate created:', {
+    estimate_no: payload.estimate_no,
+    customer: payload.customer_name,
+    total: payload.total,
+    services: payload.service_list
+  });
+  console.log('Full estimate payload:', JSON.stringify(payload, null, 2));
+}
+
+async function handleEstimateUpdated(payload) {
+  console.log('Estimate updated:', {
+    estimate_no: payload.estimate_no,
+    total: payload.total
+  });
+  console.log('Full estimate payload:', JSON.stringify(payload, null, 2));
+}
+
+async function handleEstimateDeleted(payload) {
+  console.log('Estimate deleted:', {
+    estimate_no: payload.estimate_no,
+    customer: payload.customer_name
+  });
+}
+
 async function handleScheduleCreated(payload) {
   console.log('Schedule created:', { customer: payload.customer_name });
   const calendarEvent = {
@@ -184,6 +208,15 @@ app.post('/webhook/quoteiq', async (req, res) => {
     console.log(`Processing event: ${eventType}`);
 
     switch(eventType) {
+      case 'estimate.created':
+        await handleEstimateCreated(payload);
+        break;
+      case 'estimate.updated':
+        await handleEstimateUpdated(payload);
+        break;
+      case 'estimate.deleted':
+        await handleEstimateDeleted(payload);
+        break;
       case 'schedule.created':
         await handleScheduleCreated(payload);
         break;
