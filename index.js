@@ -110,8 +110,8 @@ async function deleteGoogleCalendarEvent(quoteiqDocId) {
   }
 }
 
-// Sends data to Google Sheets using URL-encoded form
-async function sendToGoogleSheets(payload) {
+// FIXED: Sends data to Google Sheets using proper JSON format
+async function sendToGoogleSheets(eventType, payload) {
     const url = process.env.GOOGLE_SHEETS_WEBHOOK_URL;
     if (!url) {
         console.error('GOOGLE_SHEETS_WEBHOOK_URL is not set. Skipping data forwarding.');
@@ -119,39 +119,42 @@ async function sendToGoogleSheets(payload) {
     }
 
     try {
-        const formData = new URLSearchParams();
-        formData.append('type', payload.type);
-        formData.append('payload', JSON.stringify(payload.payload));
+        // Create properly formatted JSON payload
+        const webhookData = {
+            type: eventType,
+            payload: payload
+        };
 
         const response = await fetch(url, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
+                'Content-Type': 'application/json',
             },
-            body: formData.toString()
+            body: JSON.stringify(webhookData)
         });
 
         if (response.ok) {
             console.log('Data successfully forwarded to Google Sheets.');
         } else {
-            console.error('Failed to forward data to Google Sheets:', response.statusText);
+            const errorText = await response.text();
+            console.error('Failed to forward data to Google Sheets:', response.statusText, errorText);
         }
     } catch (error) {
         console.error('Error forwarding data to Google Sheets:', error);
     }
 }
 
-// Event handlers
+// Event handlers - UPDATED to use new sendToGoogleSheets function
 async function handleEstimateCreated(payload) {
-  await sendToGoogleSheets({ type: 'estimate.created', payload: payload });
+  await sendToGoogleSheets('estimate.created', payload);
 }
 
 async function handleEstimateUpdated(payload) {
-  await sendToGoogleSheets({ type: 'estimate.updated', payload: payload });
+  await sendToGoogleSheets('estimate.updated', payload);
 }
 
 async function handleEstimateDeleted(payload) {
-  await sendToGoogleSheets({ type: 'estimate.deleted', payload: payload });
+  await sendToGoogleSheets('estimate.deleted', payload);
 }
 
 async function handleScheduleCreated(payload) {
@@ -204,7 +207,7 @@ async function handleScheduleDeleted(payload) {
   await deleteGoogleCalendarEvent(payload.doc_id);
 }
 
-// Main webhook endpoint
+// Main webhook endpoint - UPDATED to pass correct parameters
 app.post('/webhook/quoteiq', async (req, res) => {
   try {
     const eventData = req.body;
@@ -216,13 +219,13 @@ app.post('/webhook/quoteiq', async (req, res) => {
     console.log(`Processing event: ${eventType}`);
     switch(eventType) {
       case 'estimate.created':
-        await handleEstimateCreated(eventData);
+        await handleEstimateCreated(payload);
         break;
       case 'estimate.updated':
-        await handleEstimateUpdated(eventData);
+        await handleEstimateUpdated(payload);
         break;
       case 'estimate.deleted':
-        await handleEstimateDeleted(eventData);
+        await handleEstimateDeleted(payload);
         break;
       case 'schedule.created':
         await handleScheduleCreated(payload);
