@@ -1,6 +1,7 @@
 // QuoteIQ Webhook Handler - Complete Version with JSON Authentication
 const express = require('express');
 const { google } = require('googleapis');
+const fetch = require('node-fetch'); // Make sure node-fetch is installed
 const app = express();
 
 // Middleware to parse JSON
@@ -118,30 +119,45 @@ async function deleteGoogleCalendarEvent(quoteiqDocId) {
   }
 }
 
+// New function to forward data to Google Sheets
+async function sendToGoogleSheets(payload) {
+    const url = process.env.GOOGLE_SHEETS_WEBHOOK_URL;
+    if (!url) {
+        console.error('GOOGLE_SHEETS_WEBHOOK_URL is not set. Skipping data forwarding.');
+        return;
+    }
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+        if (response.ok) {
+            console.log('Data successfully forwarded to Google Sheets.');
+        } else {
+            console.error('Failed to forward data to Google Sheets:', response.statusText);
+        }
+    } catch (error) {
+        console.error('Error forwarding data to Google Sheets:', error);
+    }
+}
+
 // Event handlers
 async function handleEstimateCreated(payload) {
-  console.log('Estimate created:', {
-    estimate_no: payload.estimate_no,
-    customer: payload.customer_name,
-    total: payload.total,
-    services: payload.service_list
-  });
-  console.log('Full estimate payload:', JSON.stringify(payload, null, 2));
+  console.log('Estimate created. Forwarding data to Google Sheets.');
+  await sendToGoogleSheets(payload);
 }
 
 async function handleEstimateUpdated(payload) {
-  console.log('Estimate updated:', {
-    estimate_no: payload.estimate_no,
-    total: payload.total
-  });
-  console.log('Full estimate payload:', JSON.stringify(payload, null, 2));
+  console.log('Estimate updated. Forwarding data to Google Sheets.');
+  await sendToGoogleSheets(payload);
 }
 
 async function handleEstimateDeleted(payload) {
-  console.log('Estimate deleted:', {
-    estimate_no: payload.estimate_no,
-    customer: payload.customer_name
-  });
+  console.log('Estimate deleted. Forwarding data to Google Sheets.');
+  await sendToGoogleSheets(payload);
 }
 
 async function handleScheduleCreated(payload) {
