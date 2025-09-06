@@ -1,13 +1,13 @@
-// QuoteIQ Webhook Handler - Complete Version with JSON Authentication
+// QuoteIQ Webhook Handler - Complete Version with Simplified Data Forwarding
 const express = require('express');
 const { google } = require('googleapis');
-const fetch = require('node-fetch'); // Make sure node-fetch is installed
+const fetch = require('node-fetch');
 const app = express();
 
 // Middleware to parse JSON
 app.use(express.json());
 
-// Google Calendar Integration Functions
+// Google Calendar Integration Functions (unchanged)
 async function getGoogleCalendarAuth() {
   try {
     const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
@@ -29,15 +29,11 @@ async function createGoogleCalendarEvent(eventData, quoteiqDocId) {
       console.log('Google Calendar authentication failed. Skipping event creation.');
       return;
     }
-
     const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
-    console.log('About to call calendar.events.insert...');
-    
     const response = await calendar.events.insert({
       calendarId: calendarId,
       resource: eventData
     });
-    
     console.log('SUCCESS: Google Calendar event created with ID:', response.data.id);
     return response.data;
   } catch (error) {
@@ -54,15 +50,12 @@ async function updateGoogleCalendarEvent(eventData, quoteiqDocId) {
       console.log('Google Calendar not configured. Skipping event update.');
       return;
     }
-    
     const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
-
     const searchResponse = await calendar.events.list({
         calendarId: calendarId,
         q: quoteiqDocId,
     });
     const existingEvents = searchResponse.data.items;
-
     if (existingEvents.length > 0) {
       const googleEventId = existingEvents[0].id;
       console.log(`Found existing event with ID: ${googleEventId}. Updating it.`);
@@ -94,14 +87,12 @@ async function deleteGoogleCalendarEvent(quoteiqDocId) {
       console.log('Google Calendar not configured. Skipping event deletion.');
       return;
     }
-    
     const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
     const searchResponse = await calendar.events.list({
         calendarId: calendarId,
         q: quoteiqDocId,
     });
     const existingEvents = searchResponse.data.items;
-    
     if (existingEvents.length > 0) {
       const googleEventId = existingEvents[0].id;
       console.log(`Deleting Google Calendar event with ID: ${googleEventId}`);
@@ -119,21 +110,27 @@ async function deleteGoogleCalendarEvent(quoteiqDocId) {
   }
 }
 
-// New function to forward data to Google Sheets
+// NEW FUNCTION: Sends data using URL-encoded form
 async function sendToGoogleSheets(payload) {
     const url = process.env.GOOGLE_SHEETS_WEBHOOK_URL;
     if (!url) {
         console.error('GOOGLE_SHEETS_WEBHOOK_URL is not set. Skipping data forwarding.');
         return;
     }
+
     try {
+        const formData = new URLSearchParams();
+        formData.append('type', payload.type);
+        formData.append('payload', JSON.stringify(payload.payload));
+
         const response = await fetch(url, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/x-www-form-urlencoded'
             },
-            body: JSON.stringify(payload)
+            body: formData.toString()
         });
+
         if (response.ok) {
             console.log('Data successfully forwarded to Google Sheets.');
         } else {
@@ -144,20 +141,20 @@ async function sendToGoogleSheets(payload) {
     }
 }
 
-// Event handlers
+// Event handlers (now using the new sendToGoogleSheets function)
 async function handleEstimateCreated(payload) {
   console.log('Estimate created. Forwarding data to Google Sheets.');
-  await sendToGoogleSheets(payload);
+  await sendToGoogleSheets({ type: 'estimate.created', payload: payload });
 }
 
 async function handleEstimateUpdated(payload) {
   console.log('Estimate updated. Forwarding data to Google Sheets.');
-  await sendToGoogleSheets(payload);
+  await sendToGoogleSheets({ type: 'estimate.updated', payload: payload });
 }
 
 async function handleEstimateDeleted(payload) {
   console.log('Estimate deleted. Forwarding data to Google Sheets.');
-  await sendToGoogleSheets(payload);
+  await sendToGoogleSheets({ type: 'estimate.deleted', payload: payload });
 }
 
 async function handleScheduleCreated(payload) {
@@ -179,14 +176,13 @@ async function handleScheduleCreated(payload) {
     end: {
       dateTime: new Date(payload.schedule_ends_at).toISOString(),
     },
-    location: payload.customer_address || '', 
+    location: payload.customer_address || '',
   };
   await createGoogleCalendarEvent(calendarEvent, payload.doc_id);
 }
 
 async function handleScheduleUpdated(payload) {
   console.log('Schedule updated:', { customer: payload.customer_name });
-  
   const updatedCalendarEvent = {
     summary: `Appointment - ${payload.customer_name || 'QuoteIQ Customer'}`,
     description: `
@@ -204,7 +200,7 @@ async function handleScheduleUpdated(payload) {
     end: {
       dateTime: new Date(payload.schedule_ends_at).toISOString(),
     },
-    location: payload.customer_address || '', 
+    location: payload.customer_address || '',
   };
   await updateGoogleCalendarEvent(updatedCalendarEvent, payload.doc_id);
 }
@@ -220,18 +216,16 @@ app.post('/webhook/quoteiq', async (req, res) => {
     const eventData = req.body;
     const eventType = eventData.type;
     const payload = eventData.payload;
-
     console.log(`Processing event: ${eventType}`);
-
     switch(eventType) {
       case 'estimate.created':
-        await handleEstimateCreated(payload);
+        await handleEstimateCreated(eventData);
         break;
       case 'estimate.updated':
-        await handleEstimateUpdated(payload);
+        await handleEstimateUpdated(eventData);
         break;
       case 'estimate.deleted':
-        await handleEstimateDeleted(payload);
+        await handleEstimateDeleted(eventData);
         break;
       case 'schedule.created':
         await handleScheduleCreated(payload);
@@ -245,7 +239,6 @@ app.post('/webhook/quoteiq', async (req, res) => {
       default:
         console.log('Event type not handled:', eventType);
     }
-
     res.status(200).json({ success: true, message: 'Event processed successfully' });
   } catch (error) {
     console.error('Webhook processing error:', error);
