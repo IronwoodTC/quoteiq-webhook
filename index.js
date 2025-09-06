@@ -6,7 +6,7 @@ const app = express();
 // Middleware to parse JSON
 app.use(express.json());
 
-// Store event mappings (in production, use a database)
+// Store event mappings (in a production environment, use a database)
 const eventMappings = new Map(); // Maps QuoteIQ doc_id to Google Calendar event_id
 
 // Google Calendar Integration Functions
@@ -46,7 +46,7 @@ async function createGoogleCalendarEvent(eventData, quoteiqDocId) {
   } catch (error) {
     console.error('Error creating Google Calendar event:', error.message);
     console.error('Full error object:', JSON.stringify(error.response ? error.response.data : error, null, 2));
-    throw error; // Re-throw the error to be caught by the main handler
+    throw error;
   }
 }
 
@@ -121,22 +121,53 @@ async function deleteGoogleCalendarEvent(quoteiqDocId) {
 async function handleScheduleCreated(payload) {
   console.log('Schedule created:', { customer: payload.customer_name });
   const calendarEvent = {
-    summary: `Appointment - ${payload.customer_name}`,
-    description: `Customer: ${payload.customer_name}\nAddress: ${payload.customer_address}`,
-    start: { dateTime: new Date(payload.schedule_starts_at).toISOString() },
-    end: { dateTime: new Date(payload.schedule_ends_at).toISOString() },
+    summary: `Appointment - ${payload.customer_name || 'QuoteIQ Customer'}`,
+    description: `
+        Customer: ${payload.customer_name || 'N/A'}
+        Phone: ${payload.customer_phone || 'N/A'}
+        Email: ${payload.customer_email || 'N/A'}
+        Address: ${payload.customer_address || 'N/A'}
+        Services: ${payload.services_list || 'N/A'}
+        Notes: ${payload.schedule_notes || 'None'}
+        QuoteIQ Doc ID: ${payload.doc_id}
+      `.trim(),
+    start: {
+      dateTime: new Date(payload.schedule_starts_at).toISOString(),
+    },
+    end: {
+      dateTime: new Date(payload.schedule_ends_at).toISOString(),
+    },
+    location: payload.customer_address || '', 
+    attendees: payload.customer_email ? [{ email: payload.customer_email }] : [],
   };
+
   await createGoogleCalendarEvent(calendarEvent, payload.doc_id);
 }
 
 async function handleScheduleUpdated(payload) {
   console.log('Schedule updated:', { customer: payload.customer_name });
+  
   const updatedCalendarEvent = {
-    summary: `Appointment - ${payload.customer_name}`,
-    description: `Customer: ${payload.customer_name}\nAddress: ${payload.customer_address}`,
-    start: { dateTime: new Date(payload.schedule_starts_at).toISOString() },
-    end: { dateTime: new Date(payload.schedule_ends_at).toISOString() },
+    summary: `Appointment - ${payload.customer_name || 'QuoteIQ Customer'}`,
+    description: `
+        Customer: ${payload.customer_name || 'N/A'}
+        Phone: ${payload.customer_phone || 'N/A'}
+        Email: ${payload.customer_email || 'N/A'}
+        Address: ${payload.customer_address || 'N/A'}
+        Services: ${payload.services_list || 'N/A'}
+        Notes: ${payload.schedule_notes || 'None'}
+        QuoteIQ Doc ID: ${payload.doc_id}
+      `.trim(),
+    start: {
+      dateTime: new Date(payload.schedule_starts_at).toISOString(),
+    },
+    end: {
+      dateTime: new Date(payload.schedule_ends_at).toISOString(),
+    },
+    location: payload.customer_address || '', 
+    attendees: payload.customer_email ? [{ email: payload.customer_email }] : [],
   };
+
   await updateGoogleCalendarEvent(updatedCalendarEvent, payload.doc_id);
 }
 
@@ -146,7 +177,6 @@ async function handleScheduleDeleted(payload) {
 }
 
 // Main webhook endpoint
-// The 'async' keyword here is the key fix.
 app.post('/webhook/quoteiq', async (req, res) => {
   try {
     const eventData = req.body;
@@ -155,7 +185,6 @@ app.post('/webhook/quoteiq', async (req, res) => {
 
     console.log(`Processing event: ${eventType}`);
 
-    // Call the correct handler and await its completion
     switch(eventType) {
       case 'schedule.created':
         await handleScheduleCreated(payload);
